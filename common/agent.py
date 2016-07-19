@@ -73,12 +73,6 @@ def train_agent(env, network, replay_memory, render=True):
             current_episode += 1
 
 def main():
-    # parse mandatory arguments
-    assert len(sys.argv) == 3
-    env_name = sys.argv[1]
-    network_algorithm = sys.argv[2]
-    assert network_algorithm in algorithms.keys()
-
     # initialize logging and parse command line flag arguments
     logging.basicConfig(level=logging.INFO)
     args = parse_arguments()
