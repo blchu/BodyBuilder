@@ -9,24 +9,20 @@ log = logging.getLogger(__name__)
 NUM_EPISODES = 10000
 # initial replay memory size
 FILL_REPLAY = 1000
-
-# mandatory command line arguments
-ENVIRONMENT = 'env_name'
-ALGORITHM = 'network_algorithm'
-# command line argument flags
-MONITOR_DIR_FLAG = '--monitor'
+# maximum replay memory size
+MAX_REPLAY = 500000
 
 
 algorithms = {
-    'dqn': print #DQN
+    'dqn': DQN
     }
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(ENVIRONMENT, action='store')
-    parser.add_argument(ALGORITHM, action='store')
-    parser.add_argument(MONITOR_DIR_FLAG, dest='monitor', help="Directory for monitor recording of training")
+    parser.add_argument('env_name', help="Name of the OpenAI Gym environment to run")
+    parser.add_argument('network_algorithm', help="The algorithm to be trained")
+    parser.add_argument('--monitor', help="Directory for monitor recording of training")
 
     return parser.parse_args()
 
@@ -44,7 +40,7 @@ def fill_memory(env, replay_memory, iterations):
         if done:
             observation = env.reset()
 
-def train_agent(env, network, replay_memory, render=True):
+def train_agent(env, network, replay_memory):
     # train for NUM_EPISODES number of episodes
     current_episode = 0
     training_iterations = 0
@@ -78,13 +74,15 @@ def main():
     args = parse_arguments()
     
     # initialize replay memory and network
-    replay_memory = ReplayMemory()
+    replay_memory = ReplayMemory(MAX_REPLAY)
     network = algorithms[network_algorithm](replay_memory)
 
     # fill replay memory
     fill_memory(gym.make(env_name), replay_memory, FILL_REPLAY)
 
     # begin training
+    env = gym.make(env_name)
+    train_agent(env, network, replay_memory)
     
 
 if __name__ == '__main__':
