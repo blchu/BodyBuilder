@@ -1,13 +1,17 @@
 import tensorflow as tf
+
 from ops import conv2d, fc, mse
+from replay_memory import ReplayMemory
 
 FRAME_STACK = 4
 FRAME_SKIP = 4
 
+REPLAY_MEMORY_CAPACITY = 1000000  # one million
+
 class DQN():
 
     def __init__(self, replay_memory, env_info):
-        self.replay_memory = replay_memory
+        self.replay_memory = ReplayMemory(REPLAY_MEMORY_CAPACITY)
         self.sess = tf.InteractiveSession()
 
         # build network

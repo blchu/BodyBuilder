@@ -3,14 +3,14 @@ import gym
 import logging
 import sys
 
+from dqn import DQN
+
 log = logging.getLogger(__name__)
 
 # number of episodes to train the agent for
 NUM_EPISODES = 10000
-# initial replay memory size
-FILL_REPLAY = 1000
-# maximum replay memory size
-MAX_REPLAY = 500000
+# number of random actions taken for initialization
+INIT_STEPS = 1000
 
 
 algorithms = {
@@ -20,13 +20,18 @@ algorithms = {
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('env_name', help="Name of the OpenAI Gym environment to run")
-    parser.add_argument('network_algorithm', help="The algorithm to be trained")
-    parser.add_argument('--monitor', help="Directory for monitor recording of training")
+    parser.add_argument('env_name',
+                        help="Name of the OpenAI Gym environment to run")
+    parser.add_argument('network_algorithm',
+                        help="The algorithm to be trained")
+    parser.add_argument('--monitor', default=None,
+                        help="Directory for monitor recording of training")
+    parser.add_argument('--initsteps', default=INIT_STEPS,
+                        help="Number of steps taken during initialization")
 
     return parser.parse_args()
 
-def fill_memory(env, replay_memory, iterations):
+def initialize_training(env, network, iterations):
     observation = env.reset()
     for _ in iterations:
         # step environment with random action and fill replay memory
@@ -34,13 +39,13 @@ def fill_memory(env, replay_memory, iterations):
         observation, reward, done, _ = env.step(env.action_space.sample())
 
         # add state transition to replay memory
-        replay_memory.add_state_transition(old_observation, action, reward, observation, done)
+        network.notify_state_transition(old_observation, action, reward, observation, done)
 
         # reset the environment if done
         if done:
             observation = env.reset()
 
-def train_agent(env, network, replay_memory):
+def train_agent(env, network):
     # train for NUM_EPISODES number of episodes
     current_episode = 0
     training_iterations = 0
@@ -55,10 +60,8 @@ def train_agent(env, network, replay_memory):
         old_observation = observation
         observation, reward, done, _ = env.step(action)
 
-        # add state transition to replay memory
-        replay_memory.add_state_transition(old_observation, action, reward, observation, done)
-
-        # train the network
+        # update network with state transition and train
+        network.notify_state_transition(old_observation, action, reward, observation, done)
         network.batch_train()
 
         # reset the environment and start new episode if done
@@ -73,16 +76,13 @@ def main():
     logging.basicConfig(level=logging.INFO)
     args = parse_arguments()
     
-    # initialize replay memory and network
-    replay_memory = ReplayMemory(MAX_REPLAY)
+    # initialize network and prepare for training
     network = algorithms[network_algorithm](replay_memory)
-
-    # fill replay memory
-    fill_memory(gym.make(env_name), replay_memory, FILL_REPLAY)
+    initialize_training(gym.make(env_name), network, INIT_STEPS)
 
     # begin training
     env = gym.make(env_name)
-    train_agent(env, network, replay_memory)
+    train_agent(env, network)
     
 
 if __name__ == '__main__':
