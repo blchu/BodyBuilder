@@ -1,11 +1,11 @@
 import tensorflow as tf
 
-INITIALIZER = tf.contrib.layers.xavier_initializer()
+INITIALIZER = tf.random_normal_initializer() #tf.contrib.layers.xavier_initializer()
 PADDING = 'SAME'
 MIN_CLIP_VALUE = -1
 MAX_CLIP_VALUE = 1
 
-def conv2d(x, filter_size, stride, feature_map_dim, name):
+def conv2d(x, filter_size, stride, feature_map_dim, name, var_dict=None):
     with tf.variable_scope(name, initializer=INITIALIZER):
         # create weight variable and convolve
         filter_dims = [filter_size, filter_size, x.get_shape()[-1], feature_map_dim]
@@ -15,7 +15,11 @@ def conv2d(x, filter_size, stride, feature_map_dim, name):
 
         # add bias and relu activation
         b = tf.get_variable('bias', [feature_map_dim])
-        h = tf.nn.relu(tf.add(conv, b, name='add'))
+        h = tf.nn.relu(tf.add(conv, b))
+
+    if var_dict is not None:
+        var_dict[W.name] = W
+        var_dict[b.name] = b
 
     return h
 
@@ -28,7 +32,7 @@ def pool(x, ksize, stride, name):
 
     return pool
 
-def fc(x, output_dim, name, activation=True):
+def fc(x, output_dim, name, var_dict=None, activation=True):
     with tf.variable_scope(name, initializer=INITIALIZER):
         # create weight variable and matrix multiply
         weight_shape = [x.get_shape()[-1], output_dim]
@@ -40,6 +44,10 @@ def fc(x, output_dim, name, activation=True):
         add_op = tf.add(mm, b)
         h = tf.nn.relu(add_op) if activation else add_op
 
+    if var_dict is not None:
+        var_dict[W.name] = W
+        var_dict[b.name] = b
+
     return h
 
 def dropout(x, keep_prob, name):
@@ -48,7 +56,7 @@ def dropout(x, keep_prob, name):
 
     return drop
 
-def softmax(x, output_dim, name):
+def softmax(x, output_dim, name, var_dict=None):
     with tf.variable_scope(name, initializer=INITIALIZER):
         # create weight variable and matrix multiply
         weight_shape = [x.get_shape()[-1], output_dim]
@@ -58,6 +66,10 @@ def softmax(x, output_dim, name):
         # add bias and relu activation (if true)
         b = tf.get_variable('bias', [output_dim])
         h = tf.nn.softmax(tf.add(mm, b))
+
+    if var_dict is not None:
+        var_dict[W.name] = W
+        var_dict[b.name] = b
 
     return h
 
