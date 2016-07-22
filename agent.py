@@ -77,7 +77,7 @@ def main():
     args = parse_arguments()
     
     # initialize network and prepare for training
-    network = algorithms[network_algorithm](replay_memory)
+    network = algorithms[network_algorithm]()
     initialize_training(gym.make(env_name), network, INIT_STEPS)
 
     # begin training

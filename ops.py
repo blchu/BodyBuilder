@@ -1,20 +1,27 @@
 import tensorflow as tf
 
-INITIALIZER = tf.random_normal_initializer() #tf.contrib.layers.xavier_initializer()
+# seeding, if desired
+SEED = None
+
+# variable initializers
+CONV2D_INITIALIZER = tf.contrib.layers.xavier_initializer_conv2d(seed=SEED)
+FC_INITIALIZER = tf.contrib.layers.xavier_initializer(seed=SEED)
+BIAS_INITIALIZER = tf.truncated_normal_initializer(stddev=0.1, seed=SEED)
+
 PADDING = 'SAME'
 MIN_CLIP_VALUE = -1
 MAX_CLIP_VALUE = 1
 
 def conv2d(x, filter_size, stride, feature_map_dim, name, var_dict=None):
-    with tf.variable_scope(name, initializer=INITIALIZER):
+    with tf.variable_scope(name, initializer=CONV2D_INITIALIZER):
         # create weight variable and convolve
         filter_dims = [filter_size, filter_size, x.get_shape()[-1], feature_map_dim]
         stride_dims = [1, stride, stride, 1]
-        W = tf.get_variable('weights', filter_dims)
+        W = tf.get_variable('weights', shape=filter_dims)
         conv = tf.nn.conv2d(x, W, stride_dims, padding=PADDING)
 
         # add bias and relu activation
-        b = tf.get_variable('bias', [feature_map_dim])
+        b = tf.get_variable('bias', shape=[feature_map_dim], initializer=BIAS_INITIALIZER)
         h = tf.nn.relu(tf.add(conv, b))
 
     if var_dict is not None:
@@ -33,14 +40,14 @@ def pool(x, ksize, stride, name):
     return pool
 
 def fc(x, output_dim, name, var_dict=None, activation=True):
-    with tf.variable_scope(name, initializer=INITIALIZER):
+    with tf.variable_scope(name, initializer=FC_INITIALIZER):
         # create weight variable and matrix multiply
         weight_shape = [x.get_shape()[-1], output_dim]
-        W = tf.get_variable('weights', weight_shape)
+        W = tf.get_variable('weights', shape=weight_shape)
         mm = tf.matmul(x, W)
 
         # add bias and relu activation (if true)
-        b = tf.get_variable('bias', [output_dim])
+        b = tf.get_variable('bias', shape=[output_dim], initializer=BIAS_INITIALIZER)
         add_op = tf.add(mm, b)
         h = tf.nn.relu(add_op) if activation else add_op
 
