@@ -39,7 +39,7 @@ def initialize_training(env, network, iterations):
         observation, reward, done, _ = env.step(env.action_space.sample())
 
         # add state transition to replay memory
-        network.notify_state_transition(old_observation, action, reward, observation, done)
+        network.notify_state_transition(old_observation, action, reward, done)
 
         # reset the environment if done
         if done:
@@ -61,11 +61,12 @@ def train_agent(env, network):
         observation, reward, done, _ = env.step(action)
 
         # update network with state transition and train
-        network.notify_state_transition(old_observation, action, reward, observation, done)
+        network.notify_state_transition(old_observation, action, reward, done)
         network.batch_train()
 
         # reset the environment and start new episode if done
         if done:
+            network.notify_terminal()
             if render:
                 env.render()
             observation = env.reset()

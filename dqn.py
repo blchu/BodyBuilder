@@ -6,7 +6,7 @@ from replay_memory import ReplayMemory
 FRAME_STACK = 4
 FRAME_SKIP = 4
 
-REPLAY_MEMORY_CAPACITY = 1000000  # one million
+REPLAY_MEMORY_CAPACITY = 100000  # one hundred thousand
 
 # hyperparameters
 GAMMA = 0.9
