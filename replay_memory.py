@@ -3,11 +3,11 @@ import random
 
 class ReplayMemory():
 
-    def __init__(self, capacity, state_dims):
+    def __init__(self, capacity, state_dims, num_actions):
         self.capacity = capacity
         
-        self.states = np.empty([self.capcity, state_dims[0], state_dims[1]])
-        self.actions = np.empty([self.capacity])
+        self.states = np.empty([self.capacity, state_dims[0], state_dims[1]])
+        self.actions = np.empty([self.capacity, num_actions])
         self.rewards = np.empty([self.capacity])
         self.terminals = np.empty([self.capacity])
 

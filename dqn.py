@@ -1,3 +1,6 @@
+import os
+import shutil
+
 import tensorflow as tf
 
 from ops import conv2d, fc, mse
@@ -9,7 +12,11 @@ FRAME_SKIP = 4
 REPLAY_MEMORY_CAPACITY = 100000  # one hundred thousand
 
 # hyperparameters
-GAMMA = 0.9
+ALPHA = 25e-5    # initial learning rate
+GAMMA = 0.9      # discount factor
+EPSILON = 1e-2   # numerical stability
+DECAY = 0.95     # rmsprop decay
+MOMENTUM = 0.95  # rmsprop momentum
 
 # scope names
 DQN_SCOPE = 'dqn'
@@ -24,10 +31,13 @@ CONV3 = 'conv3'
 HIDDEN = 'hidden'
 OUTPUT = 'output'
 
+TENSORBOARD_GRAPH_DIR = "/tmp/dqn"
+
 class DQN():
 
     def __init__(self, env_info):
-        self.replay_memory = ReplayMemory(REPLAY_MEMORY_CAPACITY)
+        self.replay_memory = ReplayMemory(REPLAY_MEMORY_CAPACITY, env_info['shape'],
+                                          env_info['num_actions'])
         self.sess = tf.Session()
 
         # build network
@@ -76,16 +86,24 @@ class DQN():
         # build dqn evaluation
         with tf.variable_scope(EVALUATION_SCOPE):
             # one-hot action selection
-            self.action = tf.placeholder(tf.float32, shape=[None, env_info['num_actions'])
+            self.action = tf.placeholder(tf.float32, shape=[None, env_info['num_actions']])
             # reward
             self.reward = tf.placeholder(tf.float32, shape=[None, 1])
             # terminal state
             self.terminal = tf.placeholder(tf.float32, shape=[None, 1])
 
-            self.target = tf.add(self.reward, tf.mul(gamma, tf.mul(self.terminal,
+            self.target = tf.add(self.reward, tf.mul(GAMMA, tf.mul(self.terminal,
                           tf.reduce_sum(tf.mul(self.action, self.t_q), 1, True))))
             self.predict = tf.reduce_sum(tf.mul(self.action, self.q), 1, True)
             self.error = mse(self.predict, self.target)
+        
+        self.optimize = tf.train.RMSPropOptimizer(ALPHA, decay=DECAY, momentum=MOMENTUM,
+                                                  epsilon=EPSILON).minimize(self.error)
 
         # initialize variables
         self.sess.run(tf.initialize_all_variables())
+        
+        # write out the graph for tensorboard
+        if os.path.isdir(TENSORBOARD_GRAPH_DIR):
+            shutil.rmtree(TENSORBOARD_GRAPH_DIR)
+        self.writer = tf.train.SummaryWriter(TENSORBOARD_GRAPH_DIR, self.sess.graph)
