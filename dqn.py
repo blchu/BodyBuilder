@@ -33,12 +33,16 @@ OUTPUT = 'output'
 
 TENSORBOARD_GRAPH_DIR = "/tmp/dqn"
 
+GPU_MEMORY_FRACTION = 0.5
+
 class DQN():
 
     def __init__(self, env_info):
         self.replay_memory = ReplayMemory(REPLAY_MEMORY_CAPACITY, env_info['shape'],
                                           env_info['num_actions'])
-        self.sess = tf.Session()
+        self.config = tf.ConfigProto()
+        self.config.gpu_options.per_process_gpu_memory_fraction = GPU_MEMORY_FRACTION
+        self.sess = tf.Session(config=self.config)
 
         # build network
         self.dqn_vars = dict()
@@ -93,12 +97,12 @@ class DQN():
             self.terminal = tf.placeholder(tf.float32, shape=[None, 1])
 
             self.target = tf.add(self.reward, tf.mul(GAMMA, tf.mul(self.terminal,
-                          tf.reduce_sum(tf.mul(self.action, self.t_q), 1, True))))
+                          tf.reduce_max(self.t_q, 1, True))))
             self.predict = tf.reduce_sum(tf.mul(self.action, self.q), 1, True)
             self.error = mse(self.predict, self.target)
         
         self.optimize = tf.train.RMSPropOptimizer(ALPHA, decay=DECAY, momentum=MOMENTUM,
-                                                  epsilon=EPSILON).minimize(self.error)
+                        epsilon=EPSILON).minimize(self.error, var_list=self.dqn_vars.values())
 
         # initialize variables
         self.sess.run(tf.initialize_all_variables())
