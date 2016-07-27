@@ -1,6 +1,8 @@
 import os
+import random
 import shutil
 
+import numpy as np
 import tensorflow as tf
 
 from ops import conv2d, fc, mse
@@ -12,11 +14,13 @@ FRAME_SKIP = 4
 REPLAY_MEMORY_CAPACITY = 100000  # one hundred thousand
 
 # hyperparameters
-ALPHA = 25e-5    # initial learning rate
-GAMMA = 0.9      # discount factor
-EPSILON = 1e-2   # numerical stability
-DECAY = 0.95     # rmsprop decay
-MOMENTUM = 0.95  # rmsprop momentum
+ALPHA = 25e-5             # initial learning rate
+GAMMA = 0.9               # discount factor
+EPSILON = 1e-2            # numerical stability
+RMS_DECAY = 0.95          # rmsprop decay
+MOMENTUM = 0.95           # rmsprop momentum
+FINAL_EXPLORATION = 0.1   # final exploration rate
+EXPLORATION_DECAY = 1e-6  # linear decay of exploration
 
 # scope names
 DQN_SCOPE = 'dqn'
@@ -40,6 +44,12 @@ class DQN():
     def __init__(self, env_info):
         self.replay_memory = ReplayMemory(REPLAY_MEMORY_CAPACITY, env_info['shape'],
                                           env_info['num_actions'])
+        self.exploration = 1.0
+
+        if env_info['type'] == 'atari':
+            shape = env_info['shape']
+            self.obs = [np.zeros((shape[0], shape[1])) for _ in range(FRAME_STACK*FRAME_SKIP)]
+
         self.config = tf.ConfigProto()
         self.config.gpu_options.per_process_gpu_memory_fraction = GPU_MEMORY_FRACTION
         self.sess = tf.Session(config=self.config)
@@ -101,7 +111,7 @@ class DQN():
             self.predict = tf.reduce_sum(tf.mul(self.action, self.q), 1, True)
             self.error = mse(self.predict, self.target)
         
-        self.optimize = tf.train.RMSPropOptimizer(ALPHA, decay=DECAY, momentum=MOMENTUM,
+        self.optimize = tf.train.RMSPropOptimizer(ALPHA, decay=RMS_DECAY, momentum=MOMENTUM,
                         epsilon=EPSILON).minimize(self.error, var_list=self.dqn_vars.values())
 
         # initialize variables
@@ -111,3 +121,25 @@ class DQN():
         if os.path.isdir(TENSORBOARD_GRAPH_DIR):
             shutil.rmtree(TENSORBOARD_GRAPH_DIR)
         self.writer = tf.train.SummaryWriter(TENSORBOARD_GRAPH_DIR, self.sess.graph)
+
+    def _add_observation(self, obs):
+        raise NotImplementedError()
+
+    def _get_obs_state(self):
+        raise NotImplementedError()
+
+    def _flush_obs(self):
+        raise NotImplementedError()
+
+    def training_predict(self, env, observation):
+        self._add_observation(observation)
+        
+        if random.random() < self.exploration:
+            action = env.action_space.sample()
+        else:
+            q_vals = self.sess.run(self.q, feed_dict={self.x: self._get_obs_state()})
+            action = np.argmax(q_vals)
+
+        self.exploration = max(self.exploration - EXPLORATION_DECAY, FINAL_EXPLORATION)
+
+        return action
