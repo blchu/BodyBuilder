@@ -56,7 +56,7 @@ def train_agent(env, network):
             env.render()
 
         # take an action and step the environment
-        action = network.training_predict(observation)
+        action = network.training_predict(env, observation)
         old_observation = observation
         observation, reward, done, _ = env.step(action)
 

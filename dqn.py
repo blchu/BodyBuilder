@@ -21,6 +21,8 @@ RMS_DECAY = 0.95          # rmsprop decay
 MOMENTUM = 0.95           # rmsprop momentum
 FINAL_EXPLORATION = 0.1   # final exploration rate
 EXPLORATION_DECAY = 1e-6  # linear decay of exploration
+BATCH_SIZE = 64           # size of training batch
+TARGET_UPDATE = 1000      # iterations per target network update
 
 # scope names
 DQN_SCOPE = 'dqn'
@@ -45,10 +47,12 @@ class DQN():
         self.replay_memory = ReplayMemory(REPLAY_MEMORY_CAPACITY, env_info['shape'],
                                           env_info['num_actions'])
         self.exploration = 1.0
+        self.train_iter = 0
 
         if env_info['type'] == 'atari':
             shape = env_info['shape']
-            self.obs = [np.zeros((shape[0], shape[1])) for _ in range(FRAME_STACK*FRAME_SKIP)]
+            buffer_size = FRAME_STACK*FRAME_SKIP
+            self.observation_buffer = [np.zeros((shape[0], shape[1])) for _ in range(buffer_size)]
 
         self.config = tf.ConfigProto()
         self.config.gpu_options.per_process_gpu_memory_fraction = GPU_MEMORY_FRACTION
@@ -104,9 +108,9 @@ class DQN():
             # reward
             self.reward = tf.placeholder(tf.float32, shape=[None, 1])
             # terminal state
-            self.terminal = tf.placeholder(tf.float32, shape=[None, 1])
+            self.non_terminal = tf.placeholder(tf.float32, shape=[None, 1])
 
-            self.target = tf.add(self.reward, tf.mul(GAMMA, tf.mul(self.terminal,
+            self.target = tf.add(self.reward, tf.mul(GAMMA, tf.mul(self.non_terminal,
                           tf.reduce_max(self.t_q, 1, True))))
             self.predict = tf.reduce_sum(tf.mul(self.action, self.q), 1, True)
             self.error = mse(self.predict, self.target)
@@ -122,24 +126,47 @@ class DQN():
             shutil.rmtree(TENSORBOARD_GRAPH_DIR)
         self.writer = tf.train.SummaryWriter(TENSORBOARD_GRAPH_DIR, self.sess.graph)
 
-    def _add_observation(self, obs):
-        raise NotImplementedError()
-
-    def _get_obs_state(self):
-        raise NotImplementedError()
-
-    def _flush_obs(self):
-        raise NotImplementedError()
-
     def training_predict(self, env, observation):
-        self._add_observation(observation)
-        
+        # select action according to epsilon-greedy policy
         if random.random() < self.exploration:
             action = env.action_space.sample()
         else:
-            q_vals = self.sess.run(self.q, feed_dict={self.x: self._get_obs_state()})
-            action = np.argmax(q_vals)
-
+            action = self.predict(observation)
         self.exploration = max(self.exploration - EXPLORATION_DECAY, FINAL_EXPLORATION)
 
-        return action
+        return env.action_space.sample() if random.random() < self.exploration else prediction
+
+    def predict(self, observation):
+        # push the new observation onto the buffer
+        self.observation_buffer.pop(len(self.observation_buffer)-1)
+        self.observation_buffer.insert(0, observation)
+
+        # create stacked state for input to dqn
+        stacked_state = self.observation_buffer[0]
+        for i in range(1, FRAME_STACK):
+            stacked_state = np.hstack((stacked_state, self.observation_buffer[i*FRAME_SKIP]))
+
+        return np.argmax(self.sess.run(self.q, feed_dict={self.x: stacked_state}))
+
+    def notify_state_transition(self, state, action, reward, done):
+        if done:
+            # flush the observation buffer
+            for i in range(len(self.observation_buffer)):
+                self.observation_buffer[i] = np.zeros(self.observation_buffer[i].shape)
+
+        self.replay_memory.add_state_transition(state, action, reward, done)
+
+    def batch_train(self):
+        # sample batch from replay memory
+        states, actions, rewards, terminals, newstates = self.replay_memory.sample()
+        nonterminals = 1 - terminals
+
+        # update target network weights
+        if self.train_iter % TARGET_UPDATE == 0:
+            self.sess.run(self.assign_ops)
+
+        # run neural network training step
+        self.sess.run(self.optimize, feed_dict={self.x:states, self.t_x:newstates,
+                      self.action:actions, self.reward:rewards, self.non_terminal:nonterminals})
+
+        self.train_iter += 1
