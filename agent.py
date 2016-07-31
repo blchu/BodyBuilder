@@ -1,11 +1,8 @@
 import argparse
 import gym
-import logging
 import sys
 
 from dqn import DQN
-
-log = logging.getLogger(__name__)
 
 # number of episodes to train the agent for
 NUM_EPISODES = 10000
@@ -33,17 +30,24 @@ def parse_arguments():
 
 def initialize_training(env, network, iterations):
     observation = env.reset()
-    for _ in iterations:
+    for i in range(iterations):
         # step environment with random action and fill replay memory
         old_observation = observation
-        observation, reward, done, _ = env.step(env.action_space.sample())
+        action = env.action_space.sample()
+        observation, reward, done, _ = env.step(action)
 
         # add state transition to replay memory
-        network.notify_state_transition(old_observation, action, reward, done)
+        network.process_observation(old_observation)
+        network.notify_state_transition(action, reward, done)
 
         # reset the environment if done
         if done:
             observation = env.reset()
+
+        # show progress every thousand steps
+        step = i+1
+        if step % 1000 == 0:
+            print("Training initialization step {} completed".format(step))
 
 def train_agent(env, network):
     # train for NUM_EPISODES number of episodes
@@ -73,8 +77,7 @@ def train_agent(env, network):
             current_episode += 1
 
 def main():
-    # initialize logging and parse command line flag arguments
-    logging.basicConfig(level=logging.INFO)
+    # parse command line flag arguments
     args = parse_arguments()
     
     # initialize network and prepare for training

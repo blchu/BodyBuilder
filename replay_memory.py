@@ -27,9 +27,9 @@ class ReplayMemory():
 
 
     def sample(self, batch_size):
-        current_size = self.capacity if filled else self.end_pointer-1
+        current_size = self.capacity if self.filled else self.end_pointer-1
         assert current_size > batch_size
-        indices = random.sample(current_size, batch_size)
+        indices = random.sample(range(current_size), batch_size)
 
         # end pointer index edge case
         if self.end_pointer in indices:
@@ -39,10 +39,10 @@ class ReplayMemory():
                 end_val = random.randint(0, current_size)
             indices[end_index] = end_val
 
-        batch_states = self.states(indices)
-        batch_actions = self.actions(indices)
-        batch_rewards = self.rewards(indices)
-        batch_terminals = self.terminals(indices)
-        batch_newstates = self.states([i+1 % self.capacity for i in indices])
+        batch_states = self.states[indices]
+        batch_actions = self.actions[indices]
+        batch_rewards = self.rewards[indices]
+        batch_terminals = self.terminals[indices]
+        batch_newstates = self.states[[(i+1) % self.capacity for i in indices]]
 
         return (batch_states, batch_actions, batch_rewards, batch_terminals, batch_newstates)

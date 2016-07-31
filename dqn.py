@@ -5,13 +5,15 @@ import shutil
 import numpy as np
 import tensorflow as tf
 
+from enums import EnvTypes
 from ops import conv2d, fc, mse
 from replay_memory import ReplayMemory
+from utils import rgb_to_luminance, downscale
 
 FRAME_STACK = 4
 FRAME_SKIP = 4
 
-REPLAY_MEMORY_CAPACITY = 100000  # one hundred thousand
+REPLAY_MEMORY_CAPACITY = 50000  # fifty thousand
 
 # hyperparameters
 ALPHA = 25e-5             # initial learning rate
@@ -43,16 +45,17 @@ GPU_MEMORY_FRACTION = 0.5
 
 class DQN():
 
-    def __init__(self, env_info):
-        self.replay_memory = ReplayMemory(REPLAY_MEMORY_CAPACITY, env_info['shape'],
-                                          env_info['num_actions'])
+    def __init__(self, env_type, state_dims, num_actions):
+        self.replay_memory = ReplayMemory(REPLAY_MEMORY_CAPACITY,
+                                          [state_dims[0], state_dims[1]*FRAME_STACK],
+                                          num_actions)
         self.exploration = 1.0
         self.train_iter = 0
 
-        if env_info['type'] == 'atari':
-            shape = env_info['shape']
+        if env_type == EnvTypes.ATARI:
             buffer_size = FRAME_STACK*FRAME_SKIP
-            self.observation_buffer = [np.zeros((shape[0], shape[1])) for _ in range(buffer_size)]
+            self.observation_buffer = [np.zeros((state_dims[0], state_dims[1]))
+                                       for _ in range(buffer_size)]
 
         self.config = tf.ConfigProto()
         self.config.gpu_options.per_process_gpu_memory_fraction = GPU_MEMORY_FRACTION
@@ -61,9 +64,9 @@ class DQN():
         # build network
         self.dqn_vars = dict()
         with tf.variable_scope(DQN_SCOPE):
-            if env_info['type'] == 'atari':
-                self.x = tf.placeholder(tf.float32, shape=[None, env_info['shape'][0],
-                                                           env_info['shape'][1]*FRAME_STACK, 1])
+            if env_type == EnvTypes.ATARI:
+                self.x = tf.placeholder(tf.float32, shape=[None, state_dims[0],
+                                                           state_dims[1]*FRAME_STACK, 1])
                 self.conv1 = conv2d(self.x, 8, 4, 32, CONV1, var_dict=self.dqn_vars)
                 self.conv2 = conv2d(self.conv1, 4, 2, 64, CONV2, var_dict=self.dqn_vars)
                 self.conv3 = conv2d(self.conv2, 3, 1, 64, CONV3, var_dict=self.dqn_vars)
@@ -73,15 +76,15 @@ class DQN():
 
             # add final hidden layers
             self.hid = fc(self.initial_layers, 512, HIDDEN, var_dict=self.dqn_vars)
-            self.q = fc(self.hid, env_info['num_actions'], OUTPUT,
+            self.q = fc(self.hid, num_actions, OUTPUT,
                         var_dict=self.dqn_vars, activation=False)
                           
         # build target network
         self.target_vars = dict()
         with tf.variable_scope(TARGET_SCOPE):
-            if env_info['type'] == 'atari':
-                self.t_x = tf.placeholder(tf.float32, shape=[None, env_info['shape'][0],
-                                                             env_info['shape'][1]*FRAME_STACK, 1])
+            if env_type == EnvTypes.ATARI:
+                self.t_x = tf.placeholder(tf.float32, shape=[None, state_dims[0],
+                                                             state_dims[1]*FRAME_STACK, 1])
                 self.t_conv1 = conv2d(self.t_x, 8, 4, 32, CONV1, var_dict=self.target_vars)
                 self.t_conv2 = conv2d(self.t_conv1, 4, 2, 64, CONV2, var_dict=self.target_vars)
                 self.t_conv3 = conv2d(self.t_conv2, 3, 1, 64, CONV3, var_dict=self.target_vars)
@@ -90,7 +93,7 @@ class DQN():
                 self.t_initial_layers = tf.reshape(self.t_conv3, flatten)
 
             self.t_hid = fc(self.t_initial_layers, 512, HIDDEN, var_dict=self.target_vars)
-            self.t_q = fc(self.t_hid, env_info['num_actions'], OUTPUT,
+            self.t_q = fc(self.t_hid, num_actions, OUTPUT,
                           var_dict=self.target_vars, activation=False)
 
         # add weight transfer operations from primary dqn network to target network
@@ -104,7 +107,7 @@ class DQN():
         # build dqn evaluation
         with tf.variable_scope(EVALUATION_SCOPE):
             # one-hot action selection
-            self.action = tf.placeholder(tf.float32, shape=[None, env_info['num_actions']])
+            self.action = tf.placeholder(tf.float32, shape=[None, num_actions])
             # reward
             self.reward = tf.placeholder(tf.float32, shape=[None, 1])
             # terminal state
@@ -126,35 +129,47 @@ class DQN():
             shutil.rmtree(TENSORBOARD_GRAPH_DIR)
         self.writer = tf.train.SummaryWriter(TENSORBOARD_GRAPH_DIR, self.sess.graph)
 
-    def training_predict(self, env, observation):
-        # select action according to epsilon-greedy policy
-        if random.random() < self.exploration:
-            action = env.action_space.sample()
-        else:
-            action = self.predict(observation)
-        self.exploration = max(self.exploration - EXPLORATION_DECAY, FINAL_EXPLORATION)
+    def process_observation(self, observation):
+        # convert to normalized luminance and downscale
+        observation = downscale(rgb_to_luminance(observation), 2)
 
-        return env.action_space.sample() if random.random() < self.exploration else prediction
-
-    def predict(self, observation):
         # push the new observation onto the buffer
         self.observation_buffer.pop(len(self.observation_buffer)-1)
         self.observation_buffer.insert(0, observation)
 
-        # create stacked state for input to dqn
+    def _get_stacked_state(self):
         stacked_state = self.observation_buffer[0]
         for i in range(1, FRAME_STACK):
             stacked_state = np.hstack((stacked_state, self.observation_buffer[i*FRAME_SKIP]))
+        return stacked_state
 
+    def _predict(self):
+        stacked_state = self._get_stacked_state()
         return np.argmax(self.sess.run(self.q, feed_dict={self.x: stacked_state}))
 
-    def notify_state_transition(self, state, action, reward, done):
+    def training_predict(self, env, observation):
+        self.process_observation(observation)
+
+        # select action according to epsilon-greedy policy
+        if random.random() < self.exploration:
+            action = env.action_space.sample()
+        else:
+            action = self._predict()
+        self.exploration = max(self.exploration - EXPLORATION_DECAY, FINAL_EXPLORATION)
+
+        return action
+
+    def testing_predict(self, observation):
+        self.process_observation(observation)
+        return self._predict()
+
+    def notify_state_transition(self, action, reward, done):
+        state = self._get_stacked_state()
+        self.replay_memory.add_state_transition(state, action, reward, done)
         if done:
             # flush the observation buffer
             for i in range(len(self.observation_buffer)):
                 self.observation_buffer[i] = np.zeros(self.observation_buffer[i].shape)
-
-        self.replay_memory.add_state_transition(state, action, reward, done)
 
     def batch_train(self):
         # sample batch from replay memory
