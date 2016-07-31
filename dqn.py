@@ -144,7 +144,10 @@ class DQN():
         return stacked_state
 
     def _predict(self):
+        print("Running prediction")
         stacked_state = self._get_stacked_state()
+        stacked_state = np.expand_dims(stacked_state, axis=0)
+        stacked_state = np.expand_dims(stacked_state, axis=3)
         return np.argmax(self.sess.run(self.q, feed_dict={self.x: stacked_state}))
 
     def training_predict(self, env, observation):
@@ -173,7 +176,11 @@ class DQN():
 
     def batch_train(self):
         # sample batch from replay memory
-        states, actions, rewards, terminals, newstates = self.replay_memory.sample()
+        states, actions, rewards, terminals, newstates = self.replay_memory.sample(BATCH_SIZE)
+        states = np.expand_dims(states, axis=3)
+        newstates = np.expand_dims(newstates, axis=3)
+        rewards = np.expand_dims(rewards, axis=1)
+        terminals = np.expand_dims(terminals, axis=1)
         nonterminals = 1 - terminals
 
         # update target network weights
