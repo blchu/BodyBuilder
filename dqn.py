@@ -22,7 +22,7 @@ EPSILON = 1e-2            # numerical stability
 RMS_DECAY = 0.95          # rmsprop decay
 MOMENTUM = 0.95           # rmsprop momentum
 FINAL_EXPLORATION = 0.1   # final exploration rate
-EXPLORATION_DECAY = 1e-6  # linear decay of exploration
+EXPLORATION_DECAY = 5e-6  # linear decay of exploration
 BATCH_SIZE = 64           # size of training batch
 TARGET_UPDATE = 1000      # iterations per target network update
 
@@ -40,6 +40,7 @@ HIDDEN = 'hidden'
 OUTPUT = 'output'
 
 TENSORBOARD_GRAPH_DIR = "/tmp/dqn"
+SUMMARY_PERIOD = 25
 
 GPU_MEMORY_FRACTION = 0.5
 
@@ -61,7 +62,7 @@ class DQN():
         self.config.gpu_options.per_process_gpu_memory_fraction = GPU_MEMORY_FRACTION
         self.sess = tf.Session(config=self.config)
 
-        # build network
+        # build q network
         self.dqn_vars = dict()
         with tf.variable_scope(DQN_SCOPE):
             if env_type == EnvTypes.ATARI:
@@ -78,6 +79,8 @@ class DQN():
             self.hid = fc(self.initial_layers, 512, HIDDEN, var_dict=self.dqn_vars)
             self.q = fc(self.hid, num_actions, OUTPUT,
                         var_dict=self.dqn_vars, activation=False)
+            
+            tf.histogram_summary('q_values', self.q)
                           
         # build target network
         self.target_vars = dict()
@@ -96,6 +99,8 @@ class DQN():
             self.t_q = fc(self.t_hid, num_actions, OUTPUT,
                           var_dict=self.target_vars, activation=False)
 
+            tf.histogram_summary('target_q_values', self.t_q)
+
         # add weight transfer operations from primary dqn network to target network
         self.assign_ops = []
         with tf.variable_scope(TRANSFER_SCOPE):
@@ -111,24 +116,27 @@ class DQN():
             # reward
             self.reward = tf.placeholder(tf.float32, shape=[None, 1])
             # terminal state
-            self.non_terminal = tf.placeholder(tf.float32, shape=[None, 1])
+            self.nonterminal = tf.placeholder(tf.float32, shape=[None, 1])
 
-            self.target = tf.add(self.reward, tf.mul(GAMMA, tf.mul(self.non_terminal,
+            self.target = tf.add(self.reward, tf.mul(GAMMA, tf.mul(self.nonterminal,
                           tf.reduce_max(self.t_q, 1, True))))
             self.predict = tf.reduce_sum(tf.mul(self.action, self.q), 1, True)
-            self.error = mse(self.predict, self.target)
+            self.error = tf.reduce_mean(mse(self.predict, self.target))
+
+            tf.scalar_summary('error', self.error)
         
         self.optimize = tf.train.RMSPropOptimizer(ALPHA, decay=RMS_DECAY, momentum=MOMENTUM,
                         epsilon=EPSILON).minimize(self.error, var_list=self.dqn_vars.values())
 
-        # initialize variables
-        self.sess.run(tf.initialize_all_variables())
-        
-        # write out the graph for tensorboard
+        # write out the graph and summaries for tensorboard
+        self.summaries = tf.merge_all_summaries()
         if os.path.isdir(TENSORBOARD_GRAPH_DIR):
             shutil.rmtree(TENSORBOARD_GRAPH_DIR)
         self.writer = tf.train.SummaryWriter(TENSORBOARD_GRAPH_DIR, self.sess.graph)
 
+        # initialize variables
+        self.sess.run(tf.initialize_all_variables())
+        
     def process_observation(self, observation):
         # convert to normalized luminance and downscale
         observation = downscale(rgb_to_luminance(observation), 2)
@@ -144,7 +152,6 @@ class DQN():
         return stacked_state
 
     def _predict(self):
-        print("Running prediction")
         stacked_state = self._get_stacked_state()
         stacked_state = np.expand_dims(stacked_state, axis=0)
         stacked_state = np.expand_dims(stacked_state, axis=3)
@@ -188,7 +195,13 @@ class DQN():
             self.sess.run(self.assign_ops)
 
         # run neural network training step
-        self.sess.run(self.optimize, feed_dict={self.x:states, self.t_x:newstates,
-                      self.action:actions, self.reward:rewards, self.non_terminal:nonterminals})
+        if self.train_iter % SUMMARY_PERIOD == 0:
+            summary, _ = self.sess.run([self.summaries, self.optimize], feed_dict={self.x:states,
+                                       self.t_x:newstates, self.action:actions,
+                                       self.reward:rewards, self.nonterminal:nonterminals})
+            self.writer.add_summary(summary, self.train_iter)
+        else:
+            self.sess.run(self.optimize, feed_dict={self.x:states, self.t_x:newstates,
+                          self.action:actions, self.reward:rewards, self.nonterminal:nonterminals})
 
         self.train_iter += 1

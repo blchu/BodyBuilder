@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-# seeding, if desired
+ADD_WEIGHT_SUMMARIES = True
 SEED = None
 
 # variable initializers
@@ -28,6 +28,10 @@ def conv2d(x, filter_size, stride, feature_map_dim, name, var_dict=None):
         var_dict[W.name] = W
         var_dict[b.name] = b
 
+    if ADD_WEIGHT_SUMMARIES:
+        tf.scalar_summary(W.name, tf.reduce_mean(W))
+        tf.scalar_summary(b.name, tf.reduce_mean(b))
+
     return h
 
 def pool(x, ksize, stride, name):
@@ -54,6 +58,10 @@ def fc(x, output_dim, name, var_dict=None, activation=True):
     if var_dict is not None:
         var_dict[W.name] = W
         var_dict[b.name] = b
+
+    if ADD_WEIGHT_SUMMARIES:
+        tf.scalar_summary(W.name, tf.reduce_mean(W))
+        tf.scalar_summary(b.name, tf.reduce_mean(b))
 
     return h
 

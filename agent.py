@@ -6,8 +6,8 @@ from dqn import DQN
 from enums import EnvTypes
 
 # number of episodes to train and test the agent for
-TRAIN_EPISODES = 100
-TEST_EPISODES = 20
+TRAIN_EPISODES = 2000
+TEST_EPISODES = 1000
 # number of random actions taken for initialization
 INIT_STEPS = 10000
 
@@ -60,6 +60,7 @@ def initialize_training(env, network, iterations):
             print("Training initialization step {} completed".format(step))
 
 def train_agent(env, network):
+    print("Beginning training")
     # train for NUM_EPISODES number of episodes
     curr_episode = 0
     training_iterations = 0
@@ -95,6 +96,7 @@ def train_agent(env, network):
             print("Agent training iteration {} completed".format(training_iterations))
 
 def test_agent(env, network):
+    print("beginning testing")
     # test for TEST_EPISODES number of episodes
     curr_episode = 0
     tot_reward = 0
@@ -123,11 +125,20 @@ def main():
     initialize_training(gym.make(args.env_name), network, INIT_STEPS)
 
     # begin training
-    env = gym.make(args.env_name)
-    train_agent(env, network)
+    train_env = gym.make(args.env_name)
+    if args.monitor is not None:
+        train_env.monitor.start(args.monitor+'/train')
+    train_agent(train_env, network)
+    if args.monitor is not None:
+        train_env.monitor.close()
 
     # evaluate agent
-    test_agent(env, network)
+    test_env = gym.make(args.env_name)
+    if args.monitor is not None:
+        test_env.monitor.start(args.monitor+'/test')
+    test_agent(test_env, network)
+    if args.monitor is not None:
+        test_env.monitor.close()
     
 
 if __name__ == '__main__':
