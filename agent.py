@@ -1,13 +1,14 @@
 import argparse
 import gym
 import sys
+import time
 
 from dqn import DQN
 from enums import EnvTypes
 
 # number of episodes to train and test the agent for
 TRAIN_EPISODES = 2000
-TEST_EPISODES = 1000
+TEST_EPISODES = 500
 # number of random actions taken for initialization
 INIT_STEPS = 10000
 
@@ -18,11 +19,15 @@ atari_environments = {
     'SpaceInvaders-v0': 6
     }
 
+standard_environments = {
+    'CartPole-v0': [4, 2]
+    }
+
 algorithms = {
     'dqn': DQN
     }
 
-render = False #True
+render = False
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -103,7 +108,8 @@ def test_agent(env, network):
     observation = env.reset()
     while curr_episode < TEST_EPISODES:
         env.render()
-        observation, _, done, _ = env.step(network.testing_predict(observation))
+        observation, reward, done, _ = env.step(network.testing_predict(observation))
+        tot_reward += reward
 
         if done:
             print("Episode {} completed; total reward is {}".format(curr_episode, tot_reward))
@@ -116,12 +122,21 @@ def main():
     # parse command line flag arguments
     args = parse_arguments()
 
-    # currently only support certain atari environments
-    assert args.env_name in atari_environments.keys()
+    # currently only support certain environments
+    assert (args.env_name in atari_environments.keys() or 
+            args.env_name in standard_environments.keys())
+
+    if args.env_name in atari_environments.keys():
+        env_type = EnvTypes.ATARI
+        state_dims = [105, 80, 1]
+        action_dims = atari_environments[args.env_name]
+    elif args.env_name in standard_environments.keys():
+        env_type = EnvTypes.STANDARD
+        state_dims = [standard_environments[args.env_name][0]]
+        action_dims = standard_environments[args.env_name][1]
     
     # initialize network and prepare for training
-    network = algorithms[args.network_algorithm](EnvTypes.ATARI, [105, 80],
-                                                 atari_environments[args.env_name])
+    network = algorithms[args.network_algorithm](env_type, state_dims, action_dims)
     initialize_training(gym.make(args.env_name), network, INIT_STEPS)
 
     # begin training
