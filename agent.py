@@ -41,8 +41,14 @@ def parse_arguments():
                         help="The algorithm to be trained")
     parser.add_argument('--monitor', default=None,
                         help="Directory for monitor recording of training")
-    parser.add_argument('--initsteps', default=INIT_STEPS,
+    parser.add_argument('--initstep', default=INIT_STEPS,
                         help="Number of steps taken during initialization")
+    parser.add_argument('--save', default=None,
+                        help="Save algoithm periodically to specified directory")
+    parser.add_argument('--restore', default=None,
+                        help="Restores and resumes training of specified algorithm")
+    parser.add_argument('--predict', default=None,
+                        help="Run prediction from specified save directory")
 
     return parser.parse_args()
 
@@ -67,7 +73,7 @@ def initialize_training(env, network, iterations):
         if step % 1000 == 0:
             print("Training initialization step {} completed".format(step))
 
-def train_agent(env, network):
+def train_agent(env, network, save_dir):
     print("Beginning training")
     # train for NUM_EPISODES number of episodes
     curr_episode = 0
@@ -87,7 +93,7 @@ def train_agent(env, network):
 
         # update network with state transition and train
         network.notify_state_transition(action, reward, done)
-        network.batch_train()
+        network.batch_train(save_dir)
 
         # reset the environment and start new episode if done
         if done:
@@ -157,15 +163,22 @@ def main():
         
         # initialize network and prepare for training
         network = algorithms[args.network_algorithm](env_type, state_dims, action_dims)
-        initialize_training(gym.make(args.env_name), network, INIT_STEPS)
+        if args.predict is None:
+            if args.restore is None:
+                initialize_training(gym.make(args.env_name), network, INIT_STEPS)
+            else:
+                network.restore_algorithm(args.restore)
 
-        # begin training
-        train_env = gym.make(args.env_name)
-        if args.monitor is not None:
-            train_env.monitor.start(args.monitor+'/train')
-        train_agent(train_env, network)
-        if args.monitor is not None:
-            train_env.monitor.close()
+            # begin training
+            train_env = gym.make(args.env_name)
+            if args.monitor is not None:
+                train_env.monitor.start(args.monitor+'/train')
+            train_agent(train_env, network, args.save)
+            if args.monitor is not None:
+                train_env.monitor.close()
+
+        else:
+            network.restore_algorithm(args.predict)
 
         # evaluate agent
         test_env = gym.make(args.env_name)

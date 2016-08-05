@@ -229,6 +229,10 @@ class DQN():
             self.sess.run(self.optimize, feed_dict={self.x:state, self.t_x:newstate,
                           self.action:action, self.reward:reward, self.nonterminal:nonterminal})
 
+        # save the dqn
+        if save_dir is not None and self.train_iter % SAVE_CHECKPOINT_PERIOD == 0:
+            self.save_algorithm(save_dir)
+
         self.train_iter += 1
 
     def save_algorithm(self, model_dir):
@@ -241,11 +245,10 @@ class DQN():
         self.saver.save(model_file)
         pickle.dump((self.replay_memory, self.exploration), gzip.open(memory_file, 'w'))
 
-    def restore_algorithm(self, model_dir, iteration):
-        restore_dir = model_dir + "/save+{}".format(iteration)
-        self.train_iter = iteration
+    def restore_algorithm(self, restore_dir):
+        self.train_iter = int(restore_dir[restore_dir.rfind("save_") + len("save_"):])
         data = pickle.load(gzip.open(restore_dir + "/memory.p", 'r'))
 
-        self.saver.restore(restore_dir)
+        self.saver.restore(restore_dir + "/model.ckpt")
         self.replay_memory = data[0]
         self.exploration = data[1]
