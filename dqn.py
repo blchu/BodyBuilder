@@ -1,5 +1,6 @@
 import gzip
 import os
+import pickle
 import random
 import shutil
 
@@ -209,7 +210,7 @@ class DQN():
             for i in range(len(self.observation_buffer)):
                 self.observation_buffer[i] = np.zeros(self.observation_buffer[i].shape)
 
-    def batch_train(self):
+    def batch_train(self, save_dir):
         # sample batch from replay memory
         state, action, reward, terminal, newstate = self.replay_memory.sample(BATCH_SIZE)
         reward = np.expand_dims(reward, axis=1)
@@ -235,20 +236,20 @@ class DQN():
 
         self.train_iter += 1
 
-    def save_algorithm(self, model_dir):
+    def save_algorithm(self, save_dir):
         # create directory tree for saving the algorithm
-        save_dir = model_dir + "/save_{}".format(self.train_iter)
-        os.mkdir(save_dir)
-        model_file = save_dir + "/model.ckpt"
-        memory_file = save_dir + "/memory.p"
+        checkpoint_dir = save_dir + "/save_{}".format(self.train_iter)
+        os.mkdir(checkpoint_dir)
+        model_file = checkpoint_dir + "/model.ckpt"
+        memory_file = checkpoint_dir + "/memory.p"
 
-        self.saver.save(model_file)
+        self.saver.save(self.sess, model_file)
         pickle.dump((self.replay_memory, self.exploration), gzip.open(memory_file, 'w'))
 
     def restore_algorithm(self, restore_dir):
         self.train_iter = int(restore_dir[restore_dir.rfind("save_") + len("save_"):])
         data = pickle.load(gzip.open(restore_dir + "/memory.p", 'r'))
 
-        self.saver.restore(restore_dir + "/model.ckpt")
+        self.saver.restore(self.sess, restore_dir + "/model.ckpt")
         self.replay_memory = data[0]
         self.exploration = data[1]

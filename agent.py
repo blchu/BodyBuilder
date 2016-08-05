@@ -3,6 +3,7 @@ import gym
 import select
 import sys
 import threading
+import traceback
 import time
 
 from dqn import DQN
@@ -29,7 +30,7 @@ algorithms = {
     'dqn': DQN
     }
 
-render = True
+render = False
 polling = True
 
 def parse_arguments():
@@ -112,6 +113,7 @@ def train_agent(env, network, save_dir):
 def test_agent(env, network):
     print("beginning testing")
     # test for TEST_EPISODES number of episodes
+    avg_ep_reward = 0
     curr_episode = 0
     tot_reward = 0
     observation = env.reset()
@@ -128,7 +130,11 @@ def test_agent(env, network):
                 env.render()
             observation = env.reset()
             curr_episode += 1
+            avg_ep_reward += tot_reward
             tot_reward = 0
+
+    avg_ep_reward /= TEST_EPISODES
+    print("Average total reward per episode is {}".format(avg_ep_reward))
 
 def render_toggle():
     global render
@@ -190,6 +196,8 @@ def main():
 
     except KeyboardInterrupt:
         print("\nInterrupt received. Terminating agent...")
+    except:
+        traceback.print_exc()
 
     finally:
         # stop the keyboard polling thread
