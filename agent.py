@@ -1,14 +1,16 @@
 import argparse
 import gym
+import select
 import sys
+import threading
 import time
 
 from dqn import DQN
 from enums import EnvTypes
 
 # number of episodes to train and test the agent for
-TRAIN_EPISODES = 2000
-TEST_EPISODES = 500
+TRAIN_EPISODES = 3000
+TEST_EPISODES = 1000
 # number of random actions taken for initialization
 INIT_STEPS = 10000
 
@@ -27,7 +29,8 @@ algorithms = {
     'dqn': DQN
     }
 
-render = False
+render = True
+polling = True
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -107,18 +110,30 @@ def test_agent(env, network):
     tot_reward = 0
     observation = env.reset()
     while curr_episode < TEST_EPISODES:
-        env.render()
+        if render:
+            env.render()
+
         observation, reward, done, _ = env.step(network.testing_predict(observation))
         tot_reward += reward
 
         if done:
             print("Episode {} completed; total reward is {}".format(curr_episode, tot_reward))
-            env.render()
+            if render:
+                env.render()
             observation = env.reset()
             curr_episode += 1
             tot_reward = 0
 
+def render_toggle():
+    global render
+    while(polling):
+        register = select.select([sys.stdin], [], [], 0.1)[0]
+        if len(register) and register[0].readline():
+            render = not render
+
 def main():
+    global polling
+
     # parse command line flag arguments
     args = parse_arguments()
 
@@ -126,35 +141,49 @@ def main():
     assert (args.env_name in atari_environments.keys() or 
             args.env_name in standard_environments.keys())
 
-    if args.env_name in atari_environments.keys():
-        env_type = EnvTypes.ATARI
-        state_dims = [105, 80, 1]
-        action_dims = atari_environments[args.env_name]
-    elif args.env_name in standard_environments.keys():
-        env_type = EnvTypes.STANDARD
-        state_dims = [standard_environments[args.env_name][0]]
-        action_dims = standard_environments[args.env_name][1]
-    
-    # initialize network and prepare for training
-    network = algorithms[args.network_algorithm](env_type, state_dims, action_dims)
-    initialize_training(gym.make(args.env_name), network, INIT_STEPS)
+    # add keyboard polling for render toggling
+    render_toggle_thread = threading.Thread(target=render_toggle)
+    render_toggle_thread.start()
 
-    # begin training
-    train_env = gym.make(args.env_name)
-    if args.monitor is not None:
-        train_env.monitor.start(args.monitor+'/train')
-    train_agent(train_env, network)
-    if args.monitor is not None:
-        train_env.monitor.close()
+    try:
+        if args.env_name in atari_environments.keys():
+            env_type = EnvTypes.ATARI
+            state_dims = [105, 80, 1]
+            action_dims = atari_environments[args.env_name]
+        elif args.env_name in standard_environments.keys():
+            env_type = EnvTypes.STANDARD
+            state_dims = [standard_environments[args.env_name][0]]
+            action_dims = standard_environments[args.env_name][1]
+        
+        # initialize network and prepare for training
+        network = algorithms[args.network_algorithm](env_type, state_dims, action_dims)
+        initialize_training(gym.make(args.env_name), network, INIT_STEPS)
 
-    # evaluate agent
-    test_env = gym.make(args.env_name)
-    if args.monitor is not None:
-        test_env.monitor.start(args.monitor+'/test')
-    test_agent(test_env, network)
-    if args.monitor is not None:
-        test_env.monitor.close()
-    
+        # begin training
+        train_env = gym.make(args.env_name)
+        if args.monitor is not None:
+            train_env.monitor.start(args.monitor+'/train')
+        train_agent(train_env, network)
+        if args.monitor is not None:
+            train_env.monitor.close()
+
+        # evaluate agent
+        test_env = gym.make(args.env_name)
+        if args.monitor is not None:
+            test_env.monitor.start(args.monitor+'/test')
+        test_agent(test_env, network)
+        if args.monitor is not None:
+            test_env.monitor.close()
+
+    except KeyboardInterrupt:
+        print("\nInterrupt received. Terminating agent...")
+
+    finally:
+        # stop the keyboard polling thread
+        polling = False
+        render_toggle_thread.join()
+        sys.exit()
+
 
 if __name__ == '__main__':
     main()

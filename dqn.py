@@ -17,7 +17,7 @@ REPLAY_MEMORY_CAPACITY = 50000  # fifty thousand
 
 # hyperparameters
 ALPHA = 1e-4              # initial learning rate
-GAMMA = 0.9               # discount factor
+GAMMA = 0.99              # discount factor
 EPSILON = 1e-2            # numerical stability
 TAU = 0.001               # target network weight transfer decay
 RMS_DECAY = 0.95          # rmsprop decay
