@@ -1,3 +1,4 @@
+import gzip
 import os
 import random
 import shutil
@@ -10,8 +11,6 @@ from ops import conv2d, fc, mse
 from replay_memory import ReplayMemory
 from utils import rgb_to_luminance, downscale
 
-FRAME_STACK = 4
-FRAME_SKIP = 4
 
 REPLAY_MEMORY_CAPACITY = 50000  # fifty thousand
 
@@ -25,6 +24,8 @@ MOMENTUM = 0.95           # rmsprop momentum
 FINAL_EXPLORATION = 0.1   # final exploration rate
 EXPLORATION_DECAY = 1e-6  # linear decay of exploration
 BATCH_SIZE = 64           # size of training batch
+FRAME_STACK = 4           # number of previous frames in a state
+FRAME_SKIP = 4            # step size for previous frames
 
 # scope names
 DQN_SCOPE = 'dqn'
@@ -42,6 +43,7 @@ OUTPUT = 'output'
 
 TENSORBOARD_GRAPH_DIR = "/tmp/dqn"
 SUMMARY_PERIOD = 25
+SAVE_CHECKPOINT_PERIOD = 10000
 
 GPU_MEMORY_FRACTION = 0.5
 
@@ -140,6 +142,9 @@ class DQN():
         # initialize variables
         self.sess.run(tf.initialize_all_variables())
 
+        # create saver
+        self.saver = tf.train.Saver()
+
     def add_atari_layers(self, dims, var_dict):
         x = tf.placeholder(tf.float32, shape=[None, dims[0], dims[1]*FRAME_STACK, 1])
         conv1 = conv2d(x, 8, 4, 32, CONV1, var_dict=var_dict)
@@ -225,3 +230,22 @@ class DQN():
                           self.action:action, self.reward:reward, self.nonterminal:nonterminal})
 
         self.train_iter += 1
+
+    def save_algorithm(self, model_dir):
+        # create directory tree for saving the algorithm
+        save_dir = model_dir + "/save_{}".format(self.train_iter)
+        os.mkdir(save_dir)
+        model_file = save_dir + "/model.ckpt"
+        memory_file = save_dir + "/memory.p"
+
+        self.saver.save(model_file)
+        pickle.dump((self.replay_memory, self.exploration), gzip.open(memory_file, 'w'))
+
+    def restore_algorithm(self, model_dir, iteration):
+        restore_dir = model_dir + "/save+{}".format(iteration)
+        self.train_iter = iteration
+        data = pickle.load(gzip.open(restore_dir + "/memory.p", 'r'))
+
+        self.saver.restore(restore_dir)
+        self.replay_memory = data[0]
+        self.exploration = data[1]
