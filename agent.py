@@ -107,11 +107,11 @@ def train_agent(env, network, save_dir):
 
         # display training iterations every 10 iterations
         training_iterations += 1
-        if training_iterations % 10 == 0:
+        if training_iterations % 100 == 0:
             print("Agent training iteration {} completed".format(training_iterations))
 
 def test_agent(env, network):
-    print("beginning testing")
+    print("Beginning testing")
     # test for TEST_EPISODES number of episodes
     avg_ep_reward = 0
     curr_episode = 0
@@ -170,9 +170,8 @@ def main():
         # initialize network and prepare for training
         network = algorithms[args.network_algorithm](env_type, state_dims, action_dims)
         if args.predict is None:
-            if args.restore is None:
-                initialize_training(gym.make(args.env_name), network, INIT_STEPS)
-            else:
+            initialize_training(gym.make(args.env_name), network, INIT_STEPS)
+            if args.restore is not None:
                 network.restore_algorithm(args.restore)
 
             # begin training
